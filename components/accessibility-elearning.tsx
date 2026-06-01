@@ -323,7 +323,7 @@ function SkipLink() {
   );
 }
 
-function ProgressBar({ current, total }) {
+function ProgressBar({ current, total }: { current: number; total: number }) {
   const pct = (current / total) * 100;
   return (
     <div className="flex items-center gap-3 mb-6">
@@ -1601,7 +1601,7 @@ function ResultsScreen({ preScore, postScore, quizScores, checklistScore, priori
   );
 }
 
-// ─── MAIN APP ───────────────────────────────────────────────────────────────
+// ─── MAIN APP ─────────────────────────────���─────────────────────────────────
 
 const SCREENS = { INTRO: "intro", PRETEST: "pretest", POUR: "pour", WORKED: "worked", CHECKLIST: "checklist", QUIZ1: "quiz1", QUIZ2: "quiz2", PRIORITY: "priority", POSTTEST: "posttest", RESULTS: "results" };
 const PROGRESS_MAP = { [SCREENS.INTRO]: 1, [SCREENS.PRETEST]: 1, [SCREENS.POUR]: 2, [SCREENS.WORKED]: 3, [SCREENS.CHECKLIST]: 4, [SCREENS.QUIZ1]: 5, [SCREENS.QUIZ2]: 6, [SCREENS.PRIORITY]: 7, [SCREENS.POSTTEST]: 8, [SCREENS.RESULTS]: 8 };
