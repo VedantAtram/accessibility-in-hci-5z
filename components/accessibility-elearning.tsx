@@ -164,7 +164,22 @@ const WORKED_EXAMPLE_STEPS = [
 
 // 7 audit checkpoints: 5 are real violations, 2 are things the site does correctly.
 // Learner must identify which are violations, classify under POUR, and rate severity.
-const AUDIT_FINDINGS = [
+type Severity = "Low" | "Medium" | "High" | null;
+type AuditFinding = {
+  id: string;
+  element: string;
+  observation: string;
+  hint?: string;
+  isViolation: boolean;
+  correctPour: Pour;
+  correctSeverity: Severity;
+  wcag: string;
+  explanation: string;
+  impact: string;
+  fixSuggestion?: string | null;
+};
+
+const AUDIT_FINDINGS: AuditFinding[] = [
   {
     id: "alt-text",
     element: "Hero & About Section Images",
@@ -315,6 +330,11 @@ const PRIORITY_ITEMS = [
 
 // ─── UTILITY COMPONENTS ─────────────────────────────────────────────────────
 
+// Reusable types
+type Pour = "Perceivable" | "Operable" | "Understandable" | "Robust";
+type Question = { id: string; text: string; options: string[]; correct: string; explanation?: string };
+
+
 function SkipLink() {
   return (
     <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-teal-700 focus:text-white focus:px-4 focus:py-2 focus:rounded focus:text-sm">
@@ -335,11 +355,25 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
   );
 }
 
-function Card({ children, className = "" }) {
-  return <div className={`border border-gray-200 rounded-xl p-5 bg-white shadow-sm ${className}`}>{children}</div>;
+function Card({ children, className = "", ...rest }: React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode; className?: string }) {
+  return (
+    <div {...rest} className={`border border-gray-200 rounded-xl p-5 bg-white shadow-sm ${className}`}>{children}</div>
+  );
 }
 
-function NavButtons({ onBack, onNext, nextLabel = "Continue", backLabel = "Back", nextDisabled = false }) {
+function NavButtons({
+  onBack,
+  onNext,
+  nextLabel = "Continue",
+  backLabel = "Back",
+  nextDisabled = false,
+}: {
+  onBack?: () => void
+  onNext?: () => void
+  nextLabel?: string
+  backLabel?: string
+  nextDisabled?: boolean
+}) {
   return (
     <div className="flex justify-between items-center mt-8 pt-4 border-t border-gray-100">
       {onBack ? (
@@ -352,13 +386,19 @@ function NavButtons({ onBack, onNext, nextLabel = "Continue", backLabel = "Back"
   );
 }
 
-function CodeBlock({ code }) {
+function CodeBlock({ code }: { code: string }) {
   return (
     <pre className="bg-gray-50 border border-gray-200 rounded p-3 text-xs font-mono overflow-x-auto text-gray-700 my-2 leading-relaxed whitespace-pre-wrap">{code}</pre>
   );
 }
 
-function FeedbackBanner({ correct, message }) {
+function FeedbackBanner({
+  correct,
+  message,
+}: {
+  correct: boolean
+  message: string
+}) {
   return (
     <div className={`mt-3 p-4 rounded-xl border text-sm leading-relaxed ${correct ? "bg-green-50 border-green-200 text-green-800" : "bg-red-50 border-red-200 text-red-800"}`} role="status" aria-live="polite">
       <span className="font-semibold">{correct ? "✓ Correct!" : "✗ Not quite."}</span>{" "}{message}
@@ -366,7 +406,11 @@ function FeedbackBanner({ correct, message }) {
   );
 }
 
-function SectionLabel({ children }) {
+function SectionLabel({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return <p className="text-xs uppercase tracking-wide text-teal-600 font-semibold mb-1">{children}</p>;
 }
 
@@ -410,13 +454,36 @@ function LibraryPhotoSvg() {
 }
 
 // The inspectable element wrapper: click to reveal code + POUR violation
-function Inspectable({ id, activeId, onInspect, label, code, violation, principle, children, className = "" }) {
+function Inspectable({
+  id,
+  activeId,
+  onInspect,
+  label,
+  code,
+  violation,
+  principle,
+  children,
+  className = "",
+}: {
+  id: string
+  activeId: string | null
+  onInspect: (id: string | null) => void
+  label: string
+  code: string
+  violation: string
+  principle: "Perceivable" | "Operable" | "Understandable" | "Robust"
+  children: React.ReactNode
+  className?: string
+}) {
   const isActive = activeId === id;
-  const principleColors = { Perceivable: "blue", Operable: "orange", Understandable: "purple", Robust: "red" };
-  const pc = principleColors[principle] || "gray";
+  type Pour = "Perceivable" | "Operable" | "Understandable" | "Robust";
+  type ColorKey = "blue" | "orange" | "purple" | "red" | "gray";
 
-  const ringColors = { blue: "#3b82f6", orange: "#f97316", purple: "#8b5cf6", red: "#ef4444", gray: "#9ca3af" };
-  const rc = ringColors[pc] || ringColors.gray;
+  const principleColors: Record<Pour, Exclude<ColorKey, "gray">> = { Perceivable: "blue", Operable: "orange", Understandable: "purple", Robust: "red" };
+  const pc: ColorKey = principleColors[principle as Pour] ?? "gray";
+
+  const ringColors: Record<ColorKey, string> = { blue: "#3b82f6", orange: "#f97316", purple: "#8b5cf6", red: "#ef4444", gray: "#9ca3af" };
+  const rc = ringColors[pc];
 
   return (
     <div className={`relative group ${className}`}>
@@ -471,27 +538,30 @@ function Inspectable({ id, activeId, onInspect, label, code, violation, principl
   );
 }
 
-function MockWebpage({ highlights = [], mode = "static" }) {
-  const hl = (area) => highlights.includes(area);
+function MockWebpage({ highlights = [], mode = "static" }: { highlights?: string[]; mode?: "static" | "inspect" }) {
+  type Area = "hero" | "images" | "nav" | "faq" | "form" | "contrast" | "video";
+  const hl = (area: Area) => highlights.includes(area);
   const green = "#0b610b";
 
   // Interactive inspection mode state, only used on screens that enable it
-  const [inspecting, setInspecting] = useState(null);
+  const [inspecting, setInspecting] = useState<string | null>(null);
   const interactive = mode === "inspect";
 
   // Wrap elements for inspection or for static highlight mode
-  const Wrap = interactive ? Inspectable : ({ children, id, className = "" }) => {
-    const area = {
-      heroImg: "hero", aboutImg: "images", navDropdown: "nav",
-      faqAccordion: "faq", formSection: "form",
-    }[id];
-    return <div className={`${className} ${area && hl(area) ? "ring-2 ring-red-400 rounded relative" : ""}`}>
-      {children}
-      {area && hl(area) && (
-        <div className="absolute -top-3 right-1 bg-red-600 text-white rounded px-1 py-0.5 font-bold" style={{fontSize:"6.5px",zIndex:5}}>⚠</div>
-      )}
-    </div>;
-  };
+  const Wrap: any = interactive
+    ? Inspectable
+    : ({ children, id, className = "" }: { children: React.ReactNode; id: string; className?: string }) => {
+        const areaMap: Record<string, Area> = { heroImg: "hero", aboutImg: "images", navDropdown: "nav", faqAccordion: "faq", formSection: "form" };
+        const area = areaMap[id];
+        return (
+          <div className={`${className} ${area && hl(area) ? "ring-2 ring-red-400 rounded relative" : ""}`}>
+            {children}
+            {area && hl(area) && (
+              <div className="absolute -top-3 right-1 bg-red-600 text-white rounded px-1 py-0.5 font-bold" style={{ fontSize: "6.5px", zIndex: 5 }}>⚠</div>
+            )}
+          </div>
+        );
+      };
 
   return (
     <div className="border border-gray-300 rounded-lg overflow-hidden bg-white select-none shadow-sm text-xs"
@@ -738,23 +808,23 @@ function MockWebpage({ highlights = [], mode = "static" }) {
 
 // ─── SCREEN COMPONENTS ──────────────────────────────────────────────────────
 
-function TestScreen({ title, subtitle, questions, onComplete, onBack }) {
-  const [answers, setAnswers] = useState({});
+function TestScreen({ title, subtitle, questions, onComplete, onBack }: { title: string; subtitle?: string; questions: Question[]; onComplete: (score: number) => void; onBack?: () => void }) {
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
-  const handleSelect = (qId, option) => { if (!submitted) setAnswers((prev) => ({ ...prev, [qId]: option })); };
+  const handleSelect = (qId: string, option: string) => { if (!submitted) setAnswers((prev) => ({ ...prev, [qId]: option })); };
   const handleSubmit = () => { if (Object.keys(answers).length >= questions.length) setSubmitted(true); };
-  const score = questions.reduce((s, q) => s + (answers[q.id] === q.correct ? 1 : 0), 0);
+  const score = questions.reduce((s: number, q: Question) => s + (answers[q.id] === q.correct ? 1 : 0), 0);
 
   return (
     <div>
       <h2 className="text-xl font-bold text-gray-800 mb-1">{title}</h2>
       <p className="text-sm text-gray-500 mb-6">{subtitle}</p>
       <div className="space-y-6">
-        {questions.map((q, qi) => (
+  {questions.map((q: Question, qi: number) => (
           <Card key={q.id}>
             <p className="font-medium text-gray-800 mb-3">Q{qi + 1}. {q.text}</p>
             <div className="space-y-2" role="radiogroup" aria-label={`Question ${qi + 1}`}>
-              {q.options.map((opt) => {
+              {q.options.map((opt: string) => {
                 const selected = answers[q.id] === opt;
                 const isCorrect = q.correct === opt;
                 let cls = "border-gray-200 bg-white";
@@ -772,7 +842,7 @@ function TestScreen({ title, subtitle, questions, onComplete, onBack }) {
                 );
               })}
             </div>
-            {submitted && <FeedbackBanner correct={answers[q.id] === q.correct} message={q.explanation} />}
+            {submitted && <FeedbackBanner correct={answers[q.id] === q.correct} message={q.explanation || ""} />}
           </Card>
         ))}
       </div>
@@ -797,7 +867,7 @@ function TestScreen({ title, subtitle, questions, onComplete, onBack }) {
   );
 }
 
-function IntroScreen({ onNext }) {
+function IntroScreen({ onNext }: { onNext?: () => void }) {
   return (
     <div>
       <div className="mb-8">
@@ -837,9 +907,9 @@ function IntroScreen({ onNext }) {
   );
 }
 
-function POURScreen({ onBack, onNext }) {
-  const principles = Object.keys(POUR_DATA);
-  const [active, setActive] = useState(principles[0]);
+function POURScreen({ onBack, onNext }: { onBack?: () => void; onNext?: () => void }) {
+  const principles = Object.keys(POUR_DATA) as Pour[];
+  const [active, setActive] = useState<Pour>(principles[0]);
   const data = POUR_DATA[active];
   const highlightMap = { Perceivable: ["hero", "contrast", "images", "video"], Operable: ["nav"], Understandable: ["form"], Robust: ["nav", "faq"] };
 
@@ -892,8 +962,8 @@ function POURScreen({ onBack, onNext }) {
   );
 }
 
-function WorkedExampleScreen({ onBack, onNext }) {
-  const [stepIdx, setStepIdx] = useState(0);
+function WorkedExampleScreen({ onBack, onNext }: { onBack?: () => void; onNext?: () => void }) {
+  const [stepIdx, setStepIdx] = useState<number>(0);
   const step = WORKED_EXAMPLE_STEPS[stepIdx];
   const hlPerStep = [["hero", "contrast", "images", "video"], ["nav"], ["form"], ["nav", "faq"]];
 
@@ -947,10 +1017,10 @@ function WorkedExampleScreen({ onBack, onNext }) {
         </div>
       </Card>
       <div className="flex justify-between items-center mt-6">
-        <button onClick={() => stepIdx > 0 ? setStepIdx(stepIdx - 1) : onBack()} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2">
+        <button onClick={() => stepIdx > 0 ? setStepIdx(stepIdx - 1) : (onBack && onBack())} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2">
           {stepIdx > 0 ? "← Previous Step" : "Back"}
         </button>
-        <button onClick={() => stepIdx < WORKED_EXAMPLE_STEPS.length - 1 ? setStepIdx(stepIdx + 1) : onNext()}
+        <button onClick={() => stepIdx < WORKED_EXAMPLE_STEPS.length - 1 ? setStepIdx(stepIdx + 1) : (onNext && onNext())}
           className="px-5 py-2 text-sm font-medium text-white bg-teal-700 rounded hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors">
           {stepIdx < WORKED_EXAMPLE_STEPS.length - 1 ? "Next Step →" : "Now you try →"}
         </button>
@@ -959,27 +1029,27 @@ function WorkedExampleScreen({ onBack, onNext }) {
   );
 }
 
-function ChecklistScreen({ onBack, onNext, onChecklistScore }) {
+function ChecklistScreen({ onBack, onNext, onChecklistScore }: { onBack?: () => void; onNext?: () => void; onChecklistScore: (correct: number, total: number) => void }) {
   const VIOLATIONS = AUDIT_FINDINGS.filter(f => f.isViolation);
   const TOTAL_VIOLATIONS = VIOLATIONS.length;
 
   // Per-finding state: { flagged: bool, pour: string|null, severity: string|null }
-  const [findings, setFindings] = useState(() => {
-    const init = {};
+  const [findings, setFindings] = useState<Record<string, { flagged: boolean; pour: Pour | null; severity: string | null }>>(() => {
+    const init: Record<string, { flagged: boolean; pour: Pour | null; severity: string | null }> = {};
     AUDIT_FINDINGS.forEach(f => { init[f.id] = { flagged: false, pour: null, severity: null }; });
     return init;
   });
-  const [submitted, setSubmitted] = useState(false);
-  const [showReport, setShowReport] = useState(false);
-  const [expandedId, setExpandedId] = useState(null);
-  const reportRef = useRef(null);
+  const [submitted, setSubmitted] = useState<boolean>(false);
+  const [showReport, setShowReport] = useState<boolean>(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const reportRef = useRef<HTMLDivElement | null>(null);
 
-  const update = (id, field, value) => {
+  const update = (id: string, field: "pour" | "severity", value: Pour | string | null) => {
     if (submitted) return;
     setFindings(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
   };
 
-  const toggleFlag = (id) => {
+  const toggleFlag = (id: string) => {
     if (submitted) return;
     setFindings(prev => ({
       ...prev,
@@ -1023,7 +1093,7 @@ function ChecklistScreen({ onBack, onNext, onChecklistScore }) {
   const score = submitted ? computeScore() : null;
 
   // Status badge for each finding in the report
-  const getStatus = (f) => {
+  const getStatus = (f: typeof AUDIT_FINDINGS[number]) => {
     const entry = findings[f.id];
     if (f.isViolation && entry.flagged) return "found";
     if (f.isViolation && !entry.flagged) return "missed";
@@ -1198,7 +1268,7 @@ function ChecklistScreen({ onBack, onNext, onChecklistScore }) {
                     <div>
                       <label className="text-xs font-semibold text-gray-500 block mb-1">POUR Principle</label>
                       <div className="flex gap-1">
-                        {["Perceivable", "Operable", "Understandable", "Robust"].map(p => {
+                        {(["Perceivable", "Operable", "Understandable", "Robust"] as Pour[]).map((p: Pour) => {
                           const pc = pourColors[p];
                           const sel = entry.pour === p;
                           const isCorrect = submitted && f.isViolation && p === f.correctPour;
@@ -1225,7 +1295,7 @@ function ChecklistScreen({ onBack, onNext, onChecklistScore }) {
                     <div>
                       <label className="text-xs font-semibold text-gray-500 block mb-1">Severity</label>
                       <div className="flex gap-1">
-                        {["Low", "Medium", "High"].map(s => {
+                        {(["Low", "Medium", "High"] as ("Low"|"Medium"|"High")[]).map((s: "Low"|"Medium"|"High") => {
                           const sel = entry.severity === s;
                           const isCorrect = submitted && f.isViolation && s === f.correctSeverity;
                           const isWrong = submitted && sel && f.isViolation && s !== f.correctSeverity;
@@ -1291,17 +1361,17 @@ function ChecklistScreen({ onBack, onNext, onChecklistScore }) {
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-1">Issues Identified</p>
-                  <p className="text-2xl font-bold text-gray-800">{score.identifyCorrect}<span className="text-sm text-gray-400 font-normal">/{score.totalItems}</span></p>
+              <p className="text-2xl font-bold text-gray-800">{score!.identifyCorrect}<span className="text-sm text-gray-400 font-normal">/{score!.totalItems}</span></p>
                   <p className="text-xs text-gray-400 mt-0.5">violations + passes</p>
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-1">POUR Classification</p>
-                  <p className="text-2xl font-bold text-gray-800">{score.pourCorrect}<span className="text-sm text-gray-400 font-normal">/{score.totalViolations}</span></p>
+                  <p className="text-2xl font-bold text-gray-800">{score!.pourCorrect}<span className="text-sm text-gray-400 font-normal">/{score!.totalViolations}</span></p>
                   <p className="text-xs text-gray-400 mt-0.5">correct categories</p>
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-1">Severity Rating</p>
-                  <p className="text-2xl font-bold text-gray-800">{score.sevCorrect}<span className="text-sm text-gray-400 font-normal">/{score.totalViolations}</span></p>
+                  <p className="text-2xl font-bold text-gray-800">{score!.sevCorrect}<span className="text-sm text-gray-400 font-normal">/{score!.totalViolations}</span></p>
                   <p className="text-xs text-gray-400 mt-0.5">correct ratings</p>
                 </div>
               </div>
@@ -1383,7 +1453,7 @@ function ChecklistScreen({ onBack, onNext, onChecklistScore }) {
                       {/* Row 2: metadata */}
                       <div className="flex items-center gap-3 mb-2 text-xs">
                         <span className={`px-2 py-0.5 rounded font-medium ${pourColors[f.correctPour]?.bg} ${pourColors[f.correctPour]?.text}`}>{f.correctPour}</span>
-                        {f.isViolation && (
+                        {f.isViolation && f.correctSeverity && (
                           <span className={`px-2 py-0.5 rounded font-medium ${sevColors[f.correctSeverity]}`}>{f.correctSeverity} Severity</span>
                         )}
                         <span className="text-gray-400 font-mono">WCAG {f.wcag}</span>
@@ -1423,10 +1493,10 @@ function ChecklistScreen({ onBack, onNext, onChecklistScore }) {
   );
 }
 
-function PracticeQuizScreen({ question, screenTitle, screenSubtitle, onBack, onNext, onAnswer, answerId }) {
-  const [selected, setSelected] = useState(null);
-  const [submitted, setSubmitted] = useState(false);
-  const [showHint, setShowHint] = useState(false);
+function PracticeQuizScreen({ question, screenTitle, screenSubtitle, onBack, onNext, onAnswer, answerId }: { question: Question & { hint?: string }; screenTitle: string; screenSubtitle?: string; onBack?: () => void; onNext?: () => void; onAnswer: (id: string, correct: boolean) => void; answerId: string }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState<boolean>(false);
+  const [showHint, setShowHint] = useState<boolean>(false);
   const handleSubmit = () => { setSubmitted(true); onAnswer(answerId, selected === question.correct); };
 
   return (
@@ -1439,7 +1509,7 @@ function PracticeQuizScreen({ question, screenTitle, screenSubtitle, onBack, onN
         {!submitted && !showHint && <button onClick={() => setShowHint(true)} className="text-xs text-blue-600 hover:text-blue-800 mb-3 focus:outline-none focus:underline">Need a hint?</button>}
         {showHint && !submitted && <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-3"><p className="text-sm text-blue-800">💡 {question.hint}</p></div>}
         <div className="space-y-2" role="radiogroup" aria-label="Answer options">
-          {question.options.map((opt) => {
+          {question.options.map((opt: string) => {
             const isSel = selected === opt, isCorrect = question.correct === opt;
             let cls = "border-gray-200 bg-white";
             if (submitted && isSel && isCorrect) cls = "border-green-400 bg-green-50";
@@ -1456,7 +1526,7 @@ function PracticeQuizScreen({ question, screenTitle, screenSubtitle, onBack, onN
             );
           })}
         </div>
-        {submitted && <FeedbackBanner correct={selected === question.correct} message={question.explanation} />}
+  {submitted && <FeedbackBanner correct={selected === question.correct} message={question.explanation || ""} />}
       </Card>
       {!submitted ? (
         <div className="flex justify-between items-center mt-8 pt-4 border-t border-gray-100">
@@ -1470,19 +1540,19 @@ function PracticeQuizScreen({ question, screenTitle, screenSubtitle, onBack, onN
   );
 }
 
-function PrioritizationScreen({ onBack, onNext, onPriorityScore }) {
-  const [ranking, setRanking] = useState([...PRIORITY_ITEMS]);
-  const [justification, setJustification] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-  const dragItem = useRef(null), dragOverItem = useRef(null);
-  const handleDragStart = (idx) => { dragItem.current = idx; };
-  const handleDragEnter = (idx) => { dragOverItem.current = idx; };
+function PrioritizationScreen({ onBack, onNext, onPriorityScore }: { onBack?: () => void; onNext?: () => void; onPriorityScore: (rankCorrect: boolean, justified: boolean) => void }) {
+  const [ranking, setRanking] = useState<typeof PRIORITY_ITEMS>([...PRIORITY_ITEMS]);
+  const [justification, setJustification] = useState<string>("");
+  const [submitted, setSubmitted] = useState<boolean>(false);
+  const dragItem = useRef<number | null>(null), dragOverItem = useRef<number | null>(null);
+  const handleDragStart = (idx: number) => { dragItem.current = idx; };
+  const handleDragEnter = (idx: number) => { dragOverItem.current = idx; };
   const handleDragEnd = () => {
     if (dragItem.current === null || dragOverItem.current === null) return;
     const items = [...ranking]; const d = items[dragItem.current]; items.splice(dragItem.current, 1); items.splice(dragOverItem.current, 0, d);
     setRanking(items); dragItem.current = null; dragOverItem.current = null;
   };
-  const moveItem = (idx, dir) => { const n = idx + dir; if (n < 0 || n >= ranking.length) return; const items = [...ranking]; [items[idx], items[n]] = [items[n], items[idx]]; setRanking(items); };
+  const moveItem = (idx: number, dir: number) => { const n = idx + dir; if (n < 0 || n >= ranking.length) return; const items = [...ranking]; [items[idx], items[n]] = [items[n], items[idx]]; setRanking(items); };
   const handleSubmit = () => { setSubmitted(true); const topId = ranking[0].id; onPriorityScore(topId === "alt" || topId === "contrast", justification.length > 10); };
   const isGoodTop = ranking[0].id === "alt" || ranking[0].id === "contrast";
 
@@ -1519,7 +1589,7 @@ function PrioritizationScreen({ onBack, onNext, onPriorityScore }) {
           <h4 className="font-semibold text-gray-800 mb-3">{isGoodTop ? "Great prioritization!" : "Let's think about this differently..."}</h4>
           <p className="text-sm text-gray-600 mb-3">{isGoodTop ? "You correctly identified a high-severity violation as the top priority. Here's the full reasoning:" : "Missing alt text or the contrast failure should be #1 because they affect the most users with the highest severity. Here's why:"}</p>
           <div className="space-y-3">
-            {[...PRIORITY_ITEMS].sort((a, b) => ({ High: 0, Medium: 1, Low: 2 }[a.severity] - { High: 0, Medium: 1, Low: 2 }[b.severity])).map((item) => (
+            {[...PRIORITY_ITEMS].sort((a, b) => ({ High: 0, Medium: 1, Low: 2 }[(a.severity || "Low") as "High"|"Medium"|"Low"] - { High: 0, Medium: 1, Low: 2 }[(b.severity || "Low") as "High"|"Medium"|"Low"])) .map((item) => (
               <div key={item.id} className="bg-gray-50 rounded p-3 border border-gray-100">
                 <div className="flex items-center gap-2 mb-1">
                   <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${item.severity === "High" ? "bg-red-100 text-red-700" : item.severity === "Medium" ? "bg-amber-100 text-amber-700" : "bg-gray-200 text-gray-600"}`}>{item.severity}</span>
@@ -1547,7 +1617,7 @@ function PrioritizationScreen({ onBack, onNext, onPriorityScore }) {
   );
 }
 
-function ResultsScreen({ preScore, postScore, quizScores, checklistScore, priorityScore, onRestart, onJumpTo }) {
+function ResultsScreen({ preScore, postScore, quizScores, checklistScore, priorityScore, onRestart, onJumpTo }: { preScore: number; postScore: number; quizScores: Record<string, boolean>; checklistScore: { correct: number; total: number } | null; priorityScore: { rankCorrect: boolean; justified: boolean } | null; onRestart: () => void; onJumpTo: (s: string) => void }) {
   const total = PRETEST_QUESTIONS.length, improvement = postScore - preScore;
   const lo1Score = [quizScores.quiz1, quizScores.quiz2].filter(Boolean).length, lo1Total = 2;
   const lo2Pct = checklistScore ? Math.round((checklistScore.correct / checklistScore.total) * 100) : 0;
@@ -1617,11 +1687,11 @@ export default function App() {
   const [screen, setScreen] = useState(SCREENS.INTRO);
   const [preScore, setPreScore] = useState(0);
   const [postScore, setPostScore] = useState(0);
-  const [quizScores, setQuizScores] = useState({});
-  const [checklistScore, setChecklistScore] = useState(null);
-  const [priorityScore, setPriorityScore] = useState(null);
+  const [quizScores, setQuizScores] = useState<Record<string, boolean>>({});
+  const [checklistScore, setChecklistScore] = useState<{ correct: number; total: number } | null>(null);
+  const [priorityScore, setPriorityScore] = useState<{ rankCorrect: boolean; justified: boolean } | null>(null);
 
-  const goTo = useCallback((s) => {
+  const goTo = useCallback((s: string) => {
     setScreen(s);
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => { const el = document.getElementById("main-content"); if (el) el.focus({ preventScroll: true }); }, 100);
